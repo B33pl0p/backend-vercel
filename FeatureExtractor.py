@@ -17,18 +17,27 @@ def extract_text_embedding(query_text):
         text_embedding /= text_embedding.norm(dim=1, keepdim=True)
         #print("Normalized text embedding:", text_embedding)
 
-        return text_embedding.cpu().numpy().flatten()
+        return text_embedding.cpu().numpy().flatten().astype(numpy.float32)
 
 def extract_image_embedding(image_path):
+    """
+    Extract image embedding using a pre-trained CLIP model.
+    """
     with torch.no_grad():
+        # Load and preprocess the image
         image = Image.open(image_path).convert("RGB")
         preprocessed_image = preprocess(image).unsqueeze(0).to(device)
         
+        # Get the embedding from the model
         image_embedding = model.encode_image(preprocessed_image)
-
-        # Check shape and normalization
-        #print("Image embedding shape:", image_embedding.shape)
+        
+        # Normalize the embedding
         image_embedding /= image_embedding.norm(dim=1, keepdim=True)
-        #print("Normalized image embedding:", image_embedding)
-
-        return image_embedding.cpu().numpy().flatten()
+        
+        # Convert to a 1D NumPy array of floats
+        embedding = image_embedding.cpu().numpy().flatten().astype(numpy.float32)
+        
+        # Debug: Check the shape of the embedding
+        print("Embedding shape:", embedding.shape)  # Should be (512,)
+        
+        return embedding

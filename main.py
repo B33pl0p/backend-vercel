@@ -1,185 +1,201 @@
-import time
-from FetchProducts import Product, get_db
-from fastapi import FastAPI, Depends, Query, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException,UploadFile, File, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from fastapi.middleware.cors import CORSMiddleware
-import FeatureExtractor
-import VectorSearch
-import base64
-import os
-from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.sql import text
+from pydantic import BaseModel
+from DbConfig import Product, get_db, SessionLocal  # Reuse from FetchProducts.py
+from FetchProductsFromDb import fetch_product_details
+import time
+import os
+from pinecone import Pinecone
+import FeatureExtractor
 
+
+#Pinecone Configureation
+PINECONE_API_KEY = "pcsk_2zr51a_QfYBpPKH2sEfuknu2gGLz6FdB4Ks7Y2GG6eWuUQa1Qgto1NzwwZtrvmdyGx8xMg"
+
+# FastAPI app initialization
 app = FastAPI()
 
-# CORS configuration with "*" to allow all origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
-)
+#initialize pinecone
+try :
+        pc = Pinecone(api_key = PINECONE_API_KEY)
+        print("Pinecone Initialized")
+        image_index = pc.Index(host="https://image-index-ugesh32.svc.aped-4627-b74a.pinecone.io")
+        text_index = pc.Index('text-index')
+        print("Indexes are ready")
 
-# Helper function to fetch product details
-def fetch_product_details(db, product_ids, products):
-    """Fetch product details from the database and format the response."""
+except Exception as e:
+        print("Failed to initialize Pinecoone ")    
+
+
+@app.on_event("startup")
+def startup_event():
+    """
+    Initialize the database connection pool and pinecone when the app starts.
+    """
+
+    # Test the database  connection during startup
+    with SessionLocal() as db:
+        try:
+            db.execute(text("SELECT 1"))  # Test the connection
+            print("Database connection pool created successfully.")
+        except Exception as e:
+            print(f"Failed to connect to the database: {e}")
+
+
+# Products API
+@app.get("/products", response_model=list[dict])
+def get_products(skip: int = 0, limit: int = 10, random: bool = False, db: Session = Depends(get_db)):
+    """
+    Fetch products from the database with optional pagination and randomization.
+    :param skip: Number of products to skip for pagination.
+    :param limit: Number of products to fetch.
+    :param random: If True, fetch random products instead of paginated.
+    :param db: Database session dependency.
+    :return: JSON response with the list of products.
+    """
     try:
-        result_products = db.query(Product).filter(Product.product_id.in_(product_ids)).all()
-
-        if not result_products:
-            return None
-        
-        detailed_products = []
-        for product in result_products:
-            detailed_products.append({
-                    "product_id": product.product_id,
-                    "gender": product.gender,
-                    "master_category": product.master_category,
-                    "sub_category": product.sub_category,
-                    "article_type": product.article_type,
-                    "base_colour": product.base_colour,
-                    "season": product.season,
-                    "year": product.year,
-                    "product_display_name": product.product_display_name,
-                    "price": product.price,
-                    "rating": product.rating,
-                    "image_data": base64.b64encode(product.image_data).decode('utf-8'),  # Directly base64 encode here
-                    "similarity": next(item['similarity'] for item in products if item['product_id'] == product.product_id)
-                })
-        return detailed_products
-    except Exception as e:
-        print(f"Error during product fetching: {e}")
-        return None
-
-@app.get("/products")
-def read_products(
-    limit: int = Query(100, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    #start_time = time.time()
-
-    # Fetch products from the database
-    products = db.query(Product).order_by(func.random()).limit((limit)).all()
-    # Process products and encode image_data as Base64
-    result = []
-    for product in products:
-        product_dict = product.__dict__.copy()
-
-        # Encode image_data as Base64 if it exists
-        if product.image_data:
-            product_dict['image_data'] = base64.b64encode(product.image_data).decode("utf-8")
+        if random:
+            products = db.query(Product).order_by(func.random()).limit(limit).all()
         else:
-            product_dict['image_data'] = None
-        
-        result.append(product_dict)
-    
-    #end_time = time.time()
-    #print(f"Time taken for read_products: {end_time - start_time:.4f} seconds")
-    
-    return {"result": result}
+            products = db.query(Product).offset(skip).limit(limit).all()
 
+        return [
+             {
+                "id": product.id if product.id is not None else 0,
+                "name": product.name if product.name is not None else "",
+                "category_name": product.category_name if product.category_name is not None else "",
+                "image_url": product.image_url if product.image_url is not None else "",
+                "master_category": product.master_category if product.master_category is not None else "",
+                "product_id": product.product_id if product.product_id is not None else "",
+                "price": float(product.price) if product.price is not None else 0.0,  # Handle None price
+                "gender": product.gender if product.gender is not None else "",
+                "sub_category": product.sub_category if product.sub_category is not None else "",
+                "article_type": product.article_type if product.article_type is not None else "",
+                "season": product.season if product.season is not None else "",
+                "year": product.year if product.year is not None else 0,
+                "rating": float(product.rating) if product.rating is not None else None,  # Handle None rating
+            }
+            for product in products
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching products: {str(e)}")
+
+
+###################################################################
+##Image Search Part #############################################
+##################################################################
+
+# Temporary folder for saving uploaded images
 TEMP_FOLDER = "./tmp"
-
-# Ensure the temporary folder exists
 if not os.path.exists(TEMP_FOLDER):
     os.makedirs(TEMP_FOLDER)
 
+
 @app.post('/upload_image')
-async def search_image(image: UploadFile = File(...) , db: Session = Depends(get_db)):
+async def search_image(image: UploadFile = File(...), db: Session = Depends(get_db)):
     start_time = time.time()
 
-    # Read and extract features directly from uploaded image
     try:
+        # Save the uploaded image temporarily
         temp_imgpath = os.path.join(TEMP_FOLDER, image.filename)
         with open(temp_imgpath, "wb") as f:
             f.write(await image.read())
 
         # Extract features from the saved image
-        feature_start_time = time.time()
         query_features = FeatureExtractor.extract_image_embedding(temp_imgpath)
-        feature_end_time = time.time()
-        print(f"Time taken for feature extraction: {feature_end_time - feature_start_time:.4f} seconds")
+
+        #convert to list for pinecone
+        query_features = query_features.tolist()
 
     except Exception as e:
-        print(f"Error during extraction: {e}")
-        return JSONResponse(content={"error": "Feature extraction failed"}, status_code=500)
+        print(f"Error during image extraction: {e}")
+        return JSONResponse(content={"error": "Image extraction failed"}, status_code=500)
 
-    # Search in the vector database for similar images
     try:
-        search_start_time = time.time()
-        products = VectorSearch.search_by_image_embedding(query_features)
-        search_end_time = time.time()
-        print(f"Time taken for similarity search: {search_end_time - search_start_time:.4f} seconds")
-    
+        # Perform similarity search in Pinecone using the image embedding
+        results = image_index.query(
+            namespace = "image_embedding",
+            vector=query_features,
+            top_k=2,
+            include_metadata=True
+        )
+
     except Exception as e:
-        print(f"Error during searching: {e}")
-        return JSONResponse(content={"error": "Vector search failed"}, status_code=500)
-    
-    product_ids = [product['product_id'] for product in products]
+        print(f"Error during image search: {e}")
+        return JSONResponse(content={"error": "Image search failed"}, status_code=500)
 
-    # Reuse the helper function for fetching and formatting products
-    detailed_products = fetch_product_details(db, product_ids, products)
-    
+    #Extract the matching product ids
+    product_ids = [match['id'] for match in results['matches']]
 
-    if detailed_products is None:
-        return JSONResponse(content={"error": "No products found in the database"}, status_code=404)
+    #fetch the matching products from db
+    detailed_products = fetch_product_details(db, product_ids, results['matches'])
+    print(detailed_products)
+    if not detailed_products:
+            raise HTTPException(status_code=404, detail="No products found in the database")
 
-    # Clean up the temporary image
+        # Clean up the temporary image
     if os.path.exists(temp_imgpath):
         os.remove(temp_imgpath)
 
     end_time = time.time()
-    #print(f"Total time for search_image: {end_time - start_time:.4f} seconds")
-    
-    return {"result": detailed_products} if detailed_products else JSONResponse(
-        content={"error": "No matching results found"}, status_code=404
-    )
+    return {"result": detailed_products}
 
+
+
+
+
+
+
+
+
+
+
+##################################################
+##Text Search Part ###############################
+##################################################
+
+# Pydantic model for the text search request
 class TextQueryRequest(BaseModel):
     query_text: str
 
+# Endpoint to upload text and search for similar products
 @app.post('/upload_text')
 async def search_text(request: TextQueryRequest, db: Session = Depends(get_db)):
     start_time = time.time()
 
-    query_text = request.query_text  # Extract query_text from the request body
-    
-    # Extract text embedding
+    query_text = request.query_text
+
     try:
-        feature_start_time = time.time()
+        # Extract text embedding from the query
         text_embedding = FeatureExtractor.extract_text_embedding(query_text)
-        feature_end_time = time.time()
-        print(f"Time taken for text feature extraction: {feature_end_time - feature_start_time:.4f} seconds")
     except Exception as e:
-        print(f"Error during extraction: {e}")
+        print(f"Error during text extraction: {e}")
         return JSONResponse(content={"error": "Text extraction failed"}, status_code=500)
-
-    # Search in the vector database for similar products based on the text embedding
+    text_embedding = text_embedding.tolist()
     try:
-        search_start_time = time.time()
-        products = VectorSearch.search_by_text_embedding(text_embedding)
-        search_end_time = time.time()
-        print(f"Time taken for vector search: {search_end_time - search_start_time:.4f} seconds")
+        # Perform similarity search in Pinecone using the text embedding
+        results = text_index.query(
+            vector=text_embedding,
+            namespace="text_embedding",
+            top_k=5,
+            include_metadata=True
+        )
     
     except Exception as e:
-        print(f"Error during searching: {e}")
-        return JSONResponse(content={"error": "Vector search failed"}, status_code=500)
+        print(f"Error during image search: {e}")
+        return JSONResponse(content={"error": "Text search failed"}, status_code=500)
 
-    product_ids = [product['product_id'] for product in products]
+    #Extract the matching product ids
+    product_ids = [match['id'] for match in results['matches']]
 
-    # Reuse the helper function for fetching and formatting products
-    detailed_products = fetch_product_details(db, product_ids, products)
-    
-    if detailed_products is None:
-        return JSONResponse(content={"error": "No products found in the database"}, status_code=404)
+    #fetch the matching products from db
+    detailed_products = fetch_product_details(db, product_ids, results['matches'])
+    print(detailed_products)
+    if not detailed_products:
+            raise HTTPException(status_code=404, detail="No products found in the database")
 
     end_time = time.time()
-    print(f"Total time for search_text: {end_time - start_time:.4f} seconds")
-
-    return {"result": detailed_products} if detailed_products else JSONResponse(
-        content={"error": "No matching results found"}, status_code=404
-    )
-
-#uvicorn main:app --port 4000 --host 0.0.0.0 --reload
+    return {"result": detailed_products}
