@@ -1,0 +1,3 @@
+nohup uvicorn main:app --host 0.0.0.0 --port 3000 \
+--ssl-keyfile backend-key.pem \
+--ssl-certficate backend-cert.pem > uvicorn.log 2>&1 &

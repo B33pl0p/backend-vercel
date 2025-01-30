@@ -11,12 +11,23 @@ import os
 from pinecone import Pinecone
 import FeatureExtractor
 
+from fastapi.middleware.cors import CORSMiddleware
+
+# FastAPI app initialization
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (for testing purposes). Change to specific domain in production.
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
 
 #Pinecone Configureation
 PINECONE_API_KEY = "pcsk_2zr51a_QfYBpPKH2sEfuknu2gGLz6FdB4Ks7Y2GG6eWuUQa1Qgto1NzwwZtrvmdyGx8xMg"
 
-# FastAPI app initialization
-app = FastAPI()
+
 
 #initialize pinecone
 try :
@@ -119,7 +130,7 @@ async def search_image(image: UploadFile = File(...), db: Session = Depends(get_
         results = image_index.query(
             namespace = "image_embedding",
             vector=query_features,
-            top_k=2,
+            top_k=20,
             include_metadata=True
         )
 
@@ -180,7 +191,7 @@ async def search_text(request: TextQueryRequest, db: Session = Depends(get_db)):
         results = text_index.query(
             vector=text_embedding,
             namespace="text_embedding",
-            top_k=5,
+            top_k=20,
             include_metadata=True
         )
     
