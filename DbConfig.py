@@ -26,7 +26,6 @@ class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)  # Auto-incrementing primary key
     name = Column(String(500), nullable=False)  # Corresponds to "name" in JSON
-    # category_name = Column(String(100))  # Corresponds to "category_name" in JSON
     image_url = Column(String(500))  # Corresponds to "image_url" in JSON
     master_category = Column(String(100))  # Corresponds to "master_category" in JSON
     product_id = Column(String(100))  # Corresponds to "product_id" in JSON

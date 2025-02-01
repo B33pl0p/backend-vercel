@@ -16,17 +16,16 @@ def fetch_product_details(db: Session, product_ids: List[str], products: List[di
             detailed_product = {
                 "id": db_product.id,
                 "name": db_product.name,
-                "category_name": db_product.category_name,
                 "image_url": db_product.image_url,
                 "master_category": db_product.master_category,
                 "product_id": db_product.product_id,
                 "price": str(db_product.price),
                 "gender": db_product.gender,
-                "sub_category": db_product.sub_category,
                 "article_type": db_product.article_type,
                 "season": db_product.season,
                 "year": db_product.year,
                 "rating": str(db_product.rating),
+                "category":db_product.category,
             }
             detailed_products.append(detailed_product)
 
