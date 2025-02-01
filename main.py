@@ -59,17 +59,17 @@ def get_products(skip: int = 0, limit: int = 10, random: bool = False, db: Sessi
             {
                 "id": product.id or 0,
                 "name": product.name or "",
-                "category_name": product.category_name or "",
                 "image_url": product.image_url or "",
                 "master_category": product.master_category or "",
                 "product_id": product.product_id or "",
                 "price": float(product.price) if product.price is not None else 0.0,
                 "gender": product.gender or "",
-                "sub_category": product.sub_category or "",
                 "article_type": product.article_type or "",
                 "season": product.season or "",
                 "year": product.year or 0,
                 "rating": float(product.rating) if product.rating is not None else None,
+                "category": product.category or "",
+
             }
             for product in products
         ]
