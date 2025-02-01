@@ -46,14 +46,58 @@ def startup_event():
         except Exception as e:
             print(f"Failed to connect to the database: {e}")
 
-# Products API
 @app.get("/products", response_model=list[dict])
-def get_products(skip: int = 0, limit: int = 10, random: bool = False, db: Session = Depends(get_db)):
+def get_products(
+    skip: int = 0, 
+    limit: int = 10, 
+    random: bool = False, 
+    master_category: str = Query(None, description="Filter by master category"),
+    gender: str = Query(None, description="Filter by gender"),
+    min_price: float = Query(None, description="Minimum price filter"),
+    max_price: float = Query(None, description="Maximum price filter"),
+    season: str = Query(None, description="Filter by season"),
+    article_type: str = Query(None, description="Filter by article type"),
+    min_rating: float = Query(None, description="Minimum rating filter"),
+    max_rating: float = Query(None, description="Maximum rating filter"),
+    year: int = Query(None, description="Filter by year"),
+    db: Session = Depends(get_db)
+):
     try:
+        query = db.query(Product)
+
+        #  Apply filters dynamically
+        if master_category:
+            query = query.filter(Product.master_category == master_category)
+
+        if gender:
+            query = query.filter(Product.gender == gender)
+
+        if min_price is not None:
+            query = query.filter(Product.price >= min_price)
+
+        if max_price is not None:
+            query = query.filter(Product.price <= max_price)
+
+        if season:
+            query = query.filter(Product.season == season)
+
+        if article_type:
+            query = query.filter(Product.article_type == article_type)
+
+        if min_rating is not None:
+            query = query.filter(Product.rating >= min_rating)
+
+        if max_rating is not None:
+            query = query.filter(Product.rating <= max_rating)
+
+        if year:
+            query = query.filter(Product.year == year)
+
+        #  Apply randomization if requested
         if random:
-            products = db.query(Product).order_by(func.random()).limit(limit).all()
+            products = query.order_by(func.random()).limit(limit).all()
         else:
-            products = db.query(Product).offset(skip).limit(limit).all()
+            products = query.offset(skip).limit(limit).all()
 
         return [
             {
@@ -69,13 +113,11 @@ def get_products(skip: int = 0, limit: int = 10, random: bool = False, db: Sessi
                 "year": product.year or 0,
                 "rating": float(product.rating) if product.rating is not None else None,
                 "category": product.category or "",
-
             }
             for product in products
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching products: {str(e)}")
-
 
 # Temporary folder for saving uploaded images
 TEMP_FOLDER = "./tmp"
