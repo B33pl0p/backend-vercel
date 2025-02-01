@@ -26,17 +26,18 @@ class Product(Base):
     __tablename__ = "products"
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)  # Auto-incrementing primary key
     name = Column(String(500), nullable=False)  # Corresponds to "name" in JSON
-    category_name = Column(String(100))  # Corresponds to "category_name" in JSON
+    # category_name = Column(String(100))  # Corresponds to "category_name" in JSON
     image_url = Column(String(500))  # Corresponds to "image_url" in JSON
     master_category = Column(String(100))  # Corresponds to "master_category" in JSON
     product_id = Column(String(100))  # Corresponds to "product_id" in JSON
     price = Column(Numeric(10, 2))  # Corresponds to "price" in JSON
     gender = Column(String(20))  # Corresponds to "gender" in JSON
-    sub_category = Column(String(100))  # Corresponds to "sub_category" in JSON
     article_type = Column(String(100))  # Corresponds to "article_type" in JSON
     season = Column(String(20))  # Corresponds to "season" in JSON
     year = Column(Integer)  # Corresponds to "year" in JSON
     rating = Column(Numeric(3, 2))  # Corresponds to "rating" in JSON
+    category = Column(String(100))  # Corresponds to "master_category" in JSON
+
 
 # Dependency to get DB session
 def get_db():
