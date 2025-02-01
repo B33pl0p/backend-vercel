@@ -25,7 +25,7 @@ def fetch_product_details(db: Session, product_ids: List[str], products: List[di
                 "season": db_product.season,
                 "year": db_product.year,
                 "rating": str(db_product.rating),
-                "category":db_product.category,
+                "category": db_product.category,
             }
             detailed_products.append(detailed_product)
 
