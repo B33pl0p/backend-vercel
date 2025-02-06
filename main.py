@@ -10,6 +10,7 @@ import time
 import os
 from pinecone import Pinecone
 import FeatureExtractor
+import Transliterate
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -185,9 +186,12 @@ async def search_text(
     start_time = time.time()
 
     query_text = request.query_text
+    print(query_text)
+    transliterated_text = Transliterate.transliterate_nepali(query_text)
+    print(transliterated_text)
 
     try:
-        text_embedding = FeatureExtractor.extract_text_embedding(query_text).tolist()
+        text_embedding = FeatureExtractor.extract_text_embedding(transliterated_text).tolist()
     except Exception as e:
         print(f"Error during text extraction: {e}")
         return JSONResponse(content={"error": "Text extraction failed"}, status_code=500)
