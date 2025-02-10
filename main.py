@@ -152,6 +152,9 @@ async def search_image(
             top_k=top_k,
             include_metadata=True
         )
+        for match in results["matches"]:
+            print(f"Product ID: {match['id']}, Similarity Score: {match['score']:.4f}")  # Print each match
+
     except Exception as e:
         print(f"Error during image search: {e}")
         return JSONResponse(content={"error": "Image search failed"}, status_code=500)
