@@ -136,7 +136,7 @@ async def search_image(
     start_time = time.time()
 
     try:
-        temp_imgpath = os.path.join(TEMP_FOLDER, image.filename)
+        temp_imgpath = os.path.join("./tmp", image.filename)
         with open(temp_imgpath, "wb") as f:
             f.write(await image.read())
 
@@ -152,28 +152,35 @@ async def search_image(
             top_k=top_k,
             include_metadata=True
         )
+
+        # ✅ Print and collect similarity scores
+        filtered_matches = []
         for match in results["matches"]:
-            print(f"Product ID: {match['id']}, Similarity Score: {match['score']:.4f}")  # Print each match
+            print(f"Product ID: {match['id']}, Similarity Score: {match['score']:.4f}")  
+            if match["score"] >= similarity_threshold:
+                filtered_matches.append({
+                    "id": match["id"],
+                    "score": round(match["score"], 4)  # ✅ Round score for better readability
+                })
 
     except Exception as e:
         print(f"Error during image search: {e}")
         return JSONResponse(content={"error": "Image search failed"}, status_code=500)
 
-    # Apply similarity threshold filtering
-    filtered_matches = [match for match in results["matches"] if match["score"] >= similarity_threshold]
-
+    # Extract product IDs for database query
     product_ids = [match["id"] for match in filtered_matches]
+
+    # ✅ Fetch detailed product information with similarity scores
     detailed_products = fetch_product_details(db, product_ids, filtered_matches)
 
     if not detailed_products:
         raise HTTPException(status_code=404, detail="No products found with sufficient similarity")
 
+    # ✅ Remove temporary uploaded file
     if os.path.exists(temp_imgpath):
         os.remove(temp_imgpath)
 
     return {"result": detailed_products}
-
-
 # Text Query Request Model
 class TextQueryRequest(BaseModel):
     query_text: str
